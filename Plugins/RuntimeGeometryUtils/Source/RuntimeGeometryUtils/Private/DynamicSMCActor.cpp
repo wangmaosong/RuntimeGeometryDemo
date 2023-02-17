@@ -49,6 +49,7 @@ void ADynamicSMCActor::UpdateSMCMesh()
 		MeshComponent->SetStaticMesh(StaticMesh);
 		// add one material slot
 		StaticMesh->StaticMaterials.Add(FStaticMaterial());
+		StaticMesh->StaticMaterials[0].UVChannelData.bInitialized = true;
 	}
 
 	if (MeshComponent)
