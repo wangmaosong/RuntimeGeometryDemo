@@ -7,6 +7,8 @@ ADynamicSDMCActor::ADynamicSDMCActor()
 {
 	MeshComponent = CreateDefaultSubobject<USimpleDynamicMeshComponent>(TEXT("MeshComponent"), false);
 	SetRootComponent(MeshComponent);
+
+	OriginMesh = *MeshComponent->GetMesh();
 }
 
 // Called when the game starts or when spawned
@@ -20,6 +22,14 @@ void ADynamicSDMCActor::BeginPlay()
 void ADynamicSDMCActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+void ADynamicSDMCActor::ResetMeshData()
+{
+	SetMesh(OriginMesh);
+
+	UpdateSDMCMesh();
+	Super::OnMeshEditedInternal();
 }
 
 

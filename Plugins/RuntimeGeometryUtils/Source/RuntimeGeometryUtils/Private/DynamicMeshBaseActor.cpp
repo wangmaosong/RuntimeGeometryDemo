@@ -18,6 +18,17 @@ ADynamicMeshBaseActor::ADynamicMeshBaseActor()
 	MeshAABBTree.SetMesh(&SourceMesh);
 
 	FastWinding = MakeUnique<TFastWindingTree<FDynamicMesh3>>(&MeshAABBTree, false);
+
+	//BooleanWithMeshAsyncTask = new FAsyncTask<FBooleanWithMeshAsyncTask>();
+}
+
+ADynamicMeshBaseActor::~ADynamicMeshBaseActor()
+{
+	if (BooleanWithMeshAsyncTask)
+	{
+		delete BooleanWithMeshAsyncTask;
+		BooleanWithMeshAsyncTask = nullptr;
+	}
 }
 
 void ADynamicMeshBaseActor::PostLoad()
@@ -59,9 +70,13 @@ void ADynamicMeshBaseActor::Tick(float DeltaTime)
 		SourceMesh = BooleanWithMeshAsyncTask->GetTask().Mesh;
 		OnMeshEditedInternal();
 
-		delete BooleanWithMeshAsyncTask;
-		BooleanWithMeshAsyncTask = nullptr;
+		BooleanWithMeshAsyncTask->GetTask().CanBeReuse = true;
 	}
+}
+
+void ADynamicMeshBaseActor::ResetMeshData()
+{
+
 }
 
 
@@ -100,6 +115,11 @@ void ADynamicMeshBaseActor::GetMeshCopy(FDynamicMesh3& MeshOut)
 const FDynamicMesh3& ADynamicMeshBaseActor::GetMeshRef() const
 {
 	return SourceMesh;
+}
+
+void ADynamicMeshBaseActor::SetMesh(FDynamicMesh3& Mesh)
+{
+	SourceMesh = Mesh;
 }
 
 void ADynamicMeshBaseActor::OnMeshEditedInternal()
@@ -300,6 +320,11 @@ void ADynamicMeshBaseActor::IntersectWithMesh(ADynamicMeshBaseActor* OtherMeshAc
 }
 
 
+void ADynamicMeshBaseActor::ResetMesh()
+{
+	ResetMeshData();
+}
+
 void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation)
 {
 	if (ensure(OtherMeshActor) == false) return;
@@ -351,8 +376,6 @@ void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActo
 void ADynamicMeshBaseActor::BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation)
 {
 	check(IsInGameThread());
-	if (BooleanWithMeshAsyncTask != nullptr) return;
-
 	if (ensure(OtherMeshActor) == false) return;
 
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_BooleanWithMeshAsync);
@@ -360,7 +383,16 @@ void ADynamicMeshBaseActor::BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMes
 	FTransform3d ActorToWorld(GetActorTransform());
 	FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
 
-	BooleanWithMeshAsyncTask = new FAsyncTask<FBooleanWithMeshAsyncTask>(SourceMesh, ActorToWorld, OtherMeshActor->SourceMesh, OtherToWorld, Operation, NormalsMode);
+	if (BooleanWithMeshAsyncTask)
+	{
+		BooleanWithMeshAsyncTask->GetTask().SetMeshData(SourceMesh, ActorToWorld, OtherMeshActor->SourceMesh, OtherToWorld, Operation, NormalsMode);
+	}
+	else
+	{
+		BooleanWithMeshAsyncTask = new FAsyncTask<FBooleanWithMeshAsyncTask>(SourceMesh, ActorToWorld, OtherMeshActor->SourceMesh, OtherToWorld, Operation, NormalsMode);
+	}
+	
+	BooleanWithMeshAsyncTask->GetTask().CanBeReuse = false;
 	BooleanWithMeshAsyncTask->StartBackgroundTask();
 }
 

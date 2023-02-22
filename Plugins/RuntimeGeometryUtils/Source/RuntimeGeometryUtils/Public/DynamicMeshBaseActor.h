@@ -83,6 +83,8 @@ public:
 
 	friend class FAsyncTask<FBooleanWithMeshAsyncTask>;
 
+	bool CanBeReuse = true;
+
 public:
 	FBooleanWithMeshAsyncTask()
 	{
@@ -97,6 +99,16 @@ public:
 		NormalsMode(Mode)
 	{
 
+	}
+
+	void SetMeshData(const FDynamicMesh3& MeshA, const FTransform3d& ToWorldA, const FDynamicMesh3& MeshB, const FTransform3d& ToWorldB, const EDynamicMeshActorBooleanOperation& Operation, const EDynamicMeshActorNormalsMode& Mode)
+	{
+		Mesh = MeshA;
+		ActorToWorld = ToWorldA;
+		OtherMesh = MeshB;
+		OtherToWorld = ToWorldB;
+		BooleanOperation = Operation;
+		NormalsMode = Mode;
 	}
 
 	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FBooleanWithMeshAsyncTask, STATGROUP_TaskGraphTasks); }
@@ -190,6 +202,7 @@ public:
 	// Sets default values for this actor's properties
 	ADynamicMeshBaseActor();
 
+	~ADynamicMeshBaseActor();
 
 public:
 	/** Type of mesh used to initialize this Actor - either a generated mesh Primitive or an Imported OBJ file */
@@ -282,6 +295,8 @@ public:
 	 */
 	virtual const FDynamicMesh3& GetMeshRef() const;
 
+	virtual void SetMesh(FDynamicMesh3& MeshOut);
+
 
 	/**
 	 * This delegate is broadcast whenever the internal SourceMesh is updated
@@ -369,6 +384,8 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	virtual void ResetMeshData();
+
 
 
 
@@ -430,6 +447,9 @@ public:
 	// Mesh Modification API
 	//
 public:
+
+	UFUNCTION(BlueprintCallable)
+	void ResetMesh();
 
 	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh */
 	UFUNCTION(BlueprintCallable)
