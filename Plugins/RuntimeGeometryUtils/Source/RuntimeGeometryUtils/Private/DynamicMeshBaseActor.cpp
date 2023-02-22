@@ -3,11 +3,7 @@
 #include "Generators/SphereGenerator.h"
 #include "Generators/GridBoxMeshGenerator.h"
 #include "MeshQueries.h"
-#include "DynamicMesh3.h"
-#include "MeshNormals.h"
-#include "MeshTransforms.h"
 #include "MeshSimplification.h"
-#include "Operations/MeshBoolean.h"
 #include "Implicit/Solidify.h"
 
 #include "DynamicMeshOBJReader.h"
@@ -56,6 +52,15 @@ void ADynamicMeshBaseActor::Tick(float DeltaTime)
 	if (bRegenerateOnTick && SourceType == EDynamicMeshActorSourceType::Primitive)
 	{
 		OnMeshGenerationSettingsModified();
+	}
+
+	if (BooleanWithMeshAsyncTask && BooleanWithMeshAsyncTask->IsDone())
+	{
+		SourceMesh = BooleanWithMeshAsyncTask->GetTask().Mesh;
+		OnMeshEditedInternal();
+
+		delete BooleanWithMeshAsyncTask;
+		BooleanWithMeshAsyncTask = nullptr;
 	}
 }
 
@@ -278,7 +283,7 @@ bool ADynamicMeshBaseActor::IntersectRay(FVector RayOrigin, FVector RayDirection
 	return false;
 }
 
-
+DECLARE_CYCLE_STAT(TEXT("EditMesh"), STAT_EditMesh, STATGROUP_Game);
 
 
 void ADynamicMeshBaseActor::SubtractMesh(ADynamicMeshBaseActor* OtherMeshActor)
@@ -308,7 +313,7 @@ void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActo
 	MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
 
 	EditMesh([&](FDynamicMesh3& MeshToUpdate) {
-
+		SCOPE_CYCLE_COUNTER(STAT_EditMesh);
 		FDynamicMesh3 ResultMesh;
 
 		FMeshBoolean::EBooleanOp ApplyOp = FMeshBoolean::EBooleanOp::Union;
@@ -341,6 +346,22 @@ void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActo
 
 		MeshToUpdate = MoveTemp(ResultMesh);
 	});
+}
+
+void ADynamicMeshBaseActor::BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation)
+{
+	check(IsInGameThread());
+	if (BooleanWithMeshAsyncTask != nullptr) return;
+
+	if (ensure(OtherMeshActor) == false) return;
+
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_BooleanWithMeshAsync);
+
+	FTransform3d ActorToWorld(GetActorTransform());
+	FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
+
+	BooleanWithMeshAsyncTask = new FAsyncTask<FBooleanWithMeshAsyncTask>(SourceMesh, ActorToWorld, OtherMeshActor->SourceMesh, OtherToWorld, Operation, NormalsMode);
+	BooleanWithMeshAsyncTask->StartBackgroundTask();
 }
 
 

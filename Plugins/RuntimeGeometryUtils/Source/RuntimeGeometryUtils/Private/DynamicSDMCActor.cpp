@@ -30,8 +30,12 @@ void ADynamicSDMCActor::OnMeshEditedInternal()
 	Super::OnMeshEditedInternal();
 }
 
+DECLARE_CYCLE_STAT(TEXT("UpdateSDMCMesh"), STAT_UpdateSDMCMesh, STATGROUP_Game);
+
 void ADynamicSDMCActor::UpdateSDMCMesh()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdateSDMCMesh);
+
 	if (MeshComponent)
 	{
 		*(MeshComponent->GetMesh()) = SourceMesh;

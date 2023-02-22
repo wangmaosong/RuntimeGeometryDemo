@@ -41,8 +41,11 @@ void ADynamicSMCActor::OnMeshEditedInternal()
 	Super::OnMeshEditedInternal();
 }
 
+DECLARE_CYCLE_STAT(TEXT("UpdateSMCMesh"), STAT_UpdateSMCMesh, STATGROUP_Game);
+
 void ADynamicSMCActor::UpdateSMCMesh()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdateSMCMesh);
 	if (StaticMesh == nullptr)
 	{
 		StaticMesh = NewObject<UStaticMesh>();

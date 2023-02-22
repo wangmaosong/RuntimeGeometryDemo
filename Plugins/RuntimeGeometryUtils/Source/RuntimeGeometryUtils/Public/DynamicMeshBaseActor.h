@@ -5,6 +5,10 @@
 #include "DynamicMesh3.h"
 #include "DynamicMeshAABBTree3.h"
 #include "Spatial/FastWinding.h"
+#include "DynamicMesh3.h"
+#include "MeshNormals.h"
+#include "MeshTransforms.h"
+#include "Operations/MeshBoolean.h"
 #include "DynamicMeshBaseActor.generated.h"
 
 
@@ -62,6 +66,89 @@ enum class EDynamicMeshActorCollisionMode : uint8
 	ComplexAsSimpleAsync
 };
 
+DECLARE_CYCLE_STAT(TEXT("BooleanWithMeshAsyncTask"), STAT_BooleanWithMeshAsyncTask, STATGROUP_TaskGraphTasks);
+
+class FBooleanWithMeshAsyncTask : public FNonAbandonableTask
+{
+public:
+	FDynamicMesh3 Mesh;
+	FTransform3d ActorToWorld;
+
+	FDynamicMesh3 OtherMesh;
+	FTransform3d OtherToWorld;
+
+	EDynamicMeshActorBooleanOperation BooleanOperation;
+
+	EDynamicMeshActorNormalsMode NormalsMode;
+
+	friend class FAsyncTask<FBooleanWithMeshAsyncTask>;
+
+public:
+	FBooleanWithMeshAsyncTask()
+	{
+	}
+
+	FBooleanWithMeshAsyncTask(FDynamicMesh3& MeshA, const FTransform3d& ToWorldA, const FDynamicMesh3& MeshB, const FTransform3d& ToWorldB, const EDynamicMeshActorBooleanOperation& Operation, const EDynamicMeshActorNormalsMode& Mode)
+		: Mesh(MeshA),
+		ActorToWorld(ToWorldA),
+		OtherMesh(MeshB),
+		OtherToWorld(ToWorldB),
+		BooleanOperation(Operation),
+		NormalsMode(Mode)
+	{
+
+	}
+
+	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FBooleanWithMeshAsyncTask, STATGROUP_TaskGraphTasks); }
+
+	void DoWork()
+	{
+		SCOPE_CYCLE_COUNTER(STAT_BooleanWithMeshAsyncTask);
+		MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
+		MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
+
+		FDynamicMesh3 ResultMesh;
+
+		FMeshBoolean::EBooleanOp ApplyOp = FMeshBoolean::EBooleanOp::Union;
+		switch (BooleanOperation)
+		{
+		default:
+			break;
+		case EDynamicMeshActorBooleanOperation::Subtraction:
+			ApplyOp = FMeshBoolean::EBooleanOp::Difference;
+			break;
+		case EDynamicMeshActorBooleanOperation::Intersection:
+			ApplyOp = FMeshBoolean::EBooleanOp::Intersect;
+			break;
+		}
+
+		FMeshBoolean Boolean(
+			&Mesh, FTransform3d::Identity(),
+			&OtherMesh, FTransform3d::Identity(),
+			&ResultMesh,
+			ApplyOp);
+		Boolean.bPutResultInInputSpace = true;
+		bool bOK = Boolean.Compute();
+
+		if (!bOK)
+		{
+			// fill holes
+		}
+
+		if (NormalsMode == EDynamicMeshActorNormalsMode::PerVertexNormals)
+		{
+			ResultMesh.EnableAttributes();
+			FMeshNormals::InitializeOverlayToPerVertexNormals(ResultMesh.Attributes()->PrimaryNormals(), false);
+		}
+		else if (NormalsMode == EDynamicMeshActorNormalsMode::FaceNormals)
+		{
+			ResultMesh.EnableAttributes();
+			FMeshNormals::InitializeOverlayToPerTriangleNormals(ResultMesh.Attributes()->PrimaryNormals());
+		}
+
+		Mesh = MoveTemp(ResultMesh);
+	}
+};
 
 
 /**
@@ -210,6 +297,8 @@ protected:
 	/** Accumulated time since Actor was created, this is used for the animated primitives when bRegenerateOnTick = true*/
 	double AccumulatedTime = 0;
 
+	FAsyncTask<FBooleanWithMeshAsyncTask>* BooleanWithMeshAsyncTask;
+
 	/** Called whenever the initial Source mesh needs to be regenerated / re-imported. Calls EditMesh() to do so. */
 	virtual void OnMeshGenerationSettingsModified();
 
@@ -345,6 +434,10 @@ public:
 	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh */
 	UFUNCTION(BlueprintCallable)
 	void BooleanWithMesh(ADynamicMeshBaseActor* OtherMesh, EDynamicMeshActorBooleanOperation Operation);
+
+	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh, Async */
+	UFUNCTION(BlueprintCallable)
+	void BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation);
 
 	/** Subtract OtherMesh from our SourceMesh */
 	UFUNCTION(BlueprintCallable)

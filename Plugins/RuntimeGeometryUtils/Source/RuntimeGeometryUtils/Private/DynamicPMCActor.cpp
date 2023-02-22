@@ -29,8 +29,12 @@ void ADynamicPMCActor::OnMeshEditedInternal()
 	Super::OnMeshEditedInternal();
 }
 
+DECLARE_CYCLE_STAT(TEXT("UpdatePMCMesh"), STAT_UpdatePMCMesh, STATGROUP_Game);
+
 void ADynamicPMCActor::UpdatePMCMesh()
 {
+	SCOPE_CYCLE_COUNTER(STAT_UpdatePMCMesh);
+
 	if (MeshComponent)
 	{
 		bool bUseFaceNormals = (this->NormalsMode == EDynamicMeshActorNormalsMode::FaceNormals);
