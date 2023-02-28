@@ -66,6 +66,21 @@ enum class EDynamicMeshActorCollisionMode : uint8
 	ComplexAsSimpleAsync
 };
 
+USTRUCT(BlueprintType)
+struct FMeshBooleanOptions
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+	bool bFillHoles = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+	bool bSimplifyOutput = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+	float SimplifyPlanarTolerance = 0.01f;
+};
+
 DECLARE_CYCLE_STAT(TEXT("BooleanWithMeshAsyncTask"), STAT_BooleanWithMeshAsyncTask, STATGROUP_TaskGraphTasks);
 
 class FBooleanWithMeshAsyncTask : public FNonAbandonableTask
@@ -78,6 +93,7 @@ public:
 	FTransform3d OtherToWorld;
 
 	EDynamicMeshActorBooleanOperation BooleanOperation;
+	FMeshBooleanOptions BooleanOptions;
 
 	EDynamicMeshActorNormalsMode NormalsMode;
 
@@ -90,12 +106,13 @@ public:
 	{
 	}
 
-	FBooleanWithMeshAsyncTask(FDynamicMesh3& MeshA, const FTransform3d& ToWorldA, const FDynamicMesh3& MeshB, const FTransform3d& ToWorldB, const EDynamicMeshActorBooleanOperation& Operation, const EDynamicMeshActorNormalsMode& Mode)
+	FBooleanWithMeshAsyncTask(FDynamicMesh3& MeshA, const FTransform3d& ToWorldA, const FDynamicMesh3& MeshB, const FTransform3d& ToWorldB, const EDynamicMeshActorBooleanOperation& Operation, FMeshBooleanOptions Options, const EDynamicMeshActorNormalsMode& Mode)
 		: Mesh(MeshA),
 		ActorToWorld(ToWorldA),
 		OtherMesh(MeshB),
 		OtherToWorld(ToWorldB),
 		BooleanOperation(Operation),
+		BooleanOptions(Options),
 		NormalsMode(Mode)
 	{
 
@@ -140,6 +157,7 @@ public:
 			&ResultMesh,
 			ApplyOp);
 		Boolean.bPutResultInInputSpace = true;
+		Boolean.bSimplifyAlongNewEdges = BooleanOptions.bSimplifyOutput;
 		bool bOK = Boolean.Compute();
 
 		if (!bOK)
@@ -453,11 +471,11 @@ public:
 
 	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh */
 	UFUNCTION(BlueprintCallable)
-	void BooleanWithMesh(ADynamicMeshBaseActor* OtherMesh, EDynamicMeshActorBooleanOperation Operation);
+	void BooleanWithMesh(ADynamicMeshBaseActor* OtherMesh, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options);
 
 	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh, Async */
 	UFUNCTION(BlueprintCallable)
-	void BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation);
+	void BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options);
 
 	/** Subtract OtherMesh from our SourceMesh */
 	UFUNCTION(BlueprintCallable)

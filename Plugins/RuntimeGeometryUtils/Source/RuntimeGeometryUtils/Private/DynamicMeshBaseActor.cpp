@@ -68,6 +68,9 @@ void ADynamicMeshBaseActor::Tick(float DeltaTime)
 	if (BooleanWithMeshAsyncTask && BooleanWithMeshAsyncTask->IsDone())
 	{
 		SourceMesh = BooleanWithMeshAsyncTask->GetTask().Mesh;
+		MeshAABBTree.SetMesh(&SourceMesh);
+		MeshAABBTree.Build();
+
 		OnMeshEditedInternal();
 
 		BooleanWithMeshAsyncTask->GetTask().CanBeReuse = true;
@@ -308,15 +311,18 @@ DECLARE_CYCLE_STAT(TEXT("EditMesh"), STAT_EditMesh, STATGROUP_Game);
 
 void ADynamicMeshBaseActor::SubtractMesh(ADynamicMeshBaseActor* OtherMeshActor)
 {
-	BooleanWithMesh(OtherMeshActor, EDynamicMeshActorBooleanOperation::Subtraction);
+	FMeshBooleanOptions Options;
+	BooleanWithMeshAsync(OtherMeshActor, EDynamicMeshActorBooleanOperation::Subtraction, Options);
 }
 void ADynamicMeshBaseActor::UnionWithMesh(ADynamicMeshBaseActor* OtherMeshActor)
 {
-	BooleanWithMesh(OtherMeshActor, EDynamicMeshActorBooleanOperation::Union);
+	FMeshBooleanOptions Options;
+	BooleanWithMeshAsync(OtherMeshActor, EDynamicMeshActorBooleanOperation::Union, Options);
 }
 void ADynamicMeshBaseActor::IntersectWithMesh(ADynamicMeshBaseActor* OtherMeshActor)
 {
-	BooleanWithMesh(OtherMeshActor, EDynamicMeshActorBooleanOperation::Intersection);
+	FMeshBooleanOptions Options;
+	BooleanWithMeshAsync(OtherMeshActor, EDynamicMeshActorBooleanOperation::Intersection, Options);
 }
 
 
@@ -325,7 +331,7 @@ void ADynamicMeshBaseActor::ResetMesh()
 	ResetMeshData();
 }
 
-void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation)
+void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options)
 {
 	if (ensure(OtherMeshActor) == false) return;
 
@@ -360,6 +366,7 @@ void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActo
 			&ResultMesh,
 			ApplyOp);
 		Boolean.bPutResultInInputSpace = true;
+		Boolean.bSimplifyAlongNewEdges = Options.bSimplifyOutput;
 		bool bOK = Boolean.Compute();
 
 		if (!bOK)
@@ -373,7 +380,7 @@ void ADynamicMeshBaseActor::BooleanWithMesh(ADynamicMeshBaseActor* OtherMeshActo
 	});
 }
 
-void ADynamicMeshBaseActor::BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation)
+void ADynamicMeshBaseActor::BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options)
 {
 	check(IsInGameThread());
 	if (ensure(OtherMeshActor) == false) return;
@@ -389,7 +396,7 @@ void ADynamicMeshBaseActor::BooleanWithMeshAsync(ADynamicMeshBaseActor* OtherMes
 	}
 	else
 	{
-		BooleanWithMeshAsyncTask = new FAsyncTask<FBooleanWithMeshAsyncTask>(SourceMesh, ActorToWorld, OtherMeshActor->SourceMesh, OtherToWorld, Operation, NormalsMode);
+		BooleanWithMeshAsyncTask = new FAsyncTask<FBooleanWithMeshAsyncTask>(SourceMesh, ActorToWorld, OtherMeshActor->SourceMesh, OtherToWorld, Operation, Options, NormalsMode);
 	}
 	
 	BooleanWithMeshAsyncTask->GetTask().CanBeReuse = false;
