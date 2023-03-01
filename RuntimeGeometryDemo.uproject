@@ -25,6 +25,10 @@
 		{
 			"Name": "RuntimeGeometryUtils",
 			"Enabled": true
+		},
+		{
+			"Name": "RenderDocPlugin",
+			"Enabled": true
 		}
 	]
 }

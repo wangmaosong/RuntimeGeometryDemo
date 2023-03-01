@@ -52,9 +52,10 @@ enum class EDynamicMeshActorPrimitiveType : uint8
 UENUM(BlueprintType)
 enum class EDynamicMeshActorBooleanOperation : uint8
 {
-	Union,
-	Subtraction,
-	Intersection
+	Cut,				/** Cut mode without patch triangles. */
+	Union,				/** Union mode with meshes composite together, will remove inside triangles. */
+	Subtraction,		/** Subtraction mode with generate patch triangles. */
+	Intersection		/** Intersection mode will keep source geometry triangles in other geometry. */
 };
 
 
@@ -115,7 +116,6 @@ public:
 		BooleanOptions(Options),
 		NormalsMode(Mode)
 	{
-
 	}
 
 	void SetMeshData(const FDynamicMesh3& MeshA, const FTransform3d& ToWorldA, const FDynamicMesh3& MeshB, const FTransform3d& ToWorldB, const EDynamicMeshActorBooleanOperation& Operation, const EDynamicMeshActorNormalsMode& Mode)
@@ -130,54 +130,7 @@ public:
 
 	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FBooleanWithMeshAsyncTask, STATGROUP_TaskGraphTasks); }
 
-	void DoWork()
-	{
-		SCOPE_CYCLE_COUNTER(STAT_BooleanWithMeshAsyncTask);
-		MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
-		MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
-
-		FDynamicMesh3 ResultMesh;
-
-		FMeshBoolean::EBooleanOp ApplyOp = FMeshBoolean::EBooleanOp::Union;
-		switch (BooleanOperation)
-		{
-		default:
-			break;
-		case EDynamicMeshActorBooleanOperation::Subtraction:
-			ApplyOp = FMeshBoolean::EBooleanOp::Difference;
-			break;
-		case EDynamicMeshActorBooleanOperation::Intersection:
-			ApplyOp = FMeshBoolean::EBooleanOp::Intersect;
-			break;
-		}
-
-		FMeshBoolean Boolean(
-			&Mesh, FTransform3d::Identity(),
-			&OtherMesh, FTransform3d::Identity(),
-			&ResultMesh,
-			ApplyOp);
-		Boolean.bPutResultInInputSpace = true;
-		Boolean.bSimplifyAlongNewEdges = BooleanOptions.bSimplifyOutput;
-		bool bOK = Boolean.Compute();
-
-		if (!bOK)
-		{
-			// fill holes
-		}
-
-		if (NormalsMode == EDynamicMeshActorNormalsMode::PerVertexNormals)
-		{
-			ResultMesh.EnableAttributes();
-			FMeshNormals::InitializeOverlayToPerVertexNormals(ResultMesh.Attributes()->PrimaryNormals(), false);
-		}
-		else if (NormalsMode == EDynamicMeshActorNormalsMode::FaceNormals)
-		{
-			ResultMesh.EnableAttributes();
-			FMeshNormals::InitializeOverlayToPerTriangleNormals(ResultMesh.Attributes()->PrimaryNormals());
-		}
-
-		Mesh = MoveTemp(ResultMesh);
-	}
+	void DoWork();
 };
 
 
@@ -239,10 +192,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
 	bool bRegenerateOnTick = false;
 
-	//
-	// Parameters for SourceType = Imported
-	// 
-
 	/** Path to OBJ file read to initialize mesh in SourceType=Imported mode */
 	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
 	FString ImportPath;
@@ -258,11 +207,6 @@ public:
 	/** Uniform scaling applied to the imported mesh (baked into the mesh vertices, not the actor Transform) */
 	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
 	float ImportScale = 1.0;
-
-
-	//
-	// Parameters for SourceType = Primitive
-	//
 
 	/** Type of generated mesh primitive */
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
@@ -288,11 +232,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (UIMin = 0, EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
 	float PulseSpeed = 3.0;
 
-
-
-	//
-	// ADynamicMeshActor API
-	//
 public:
 
 	/**
@@ -341,12 +280,6 @@ protected:
 	/** Call this on a Mesh to compute normals according to the NormalsMode setting */
 	virtual void RecomputeNormals(FDynamicMesh3& MeshOut);
 
-
-
-
-	//
-	// Support for AABBTree / Spatial Queries
-	//
 public:
 	UPROPERTY(EditAnywhere, Category = SpatialQueryOptions)
 	bool bEnableSpatialQueries = false;
@@ -360,18 +293,10 @@ protected:
 	// This FastWindingTree is updated each time SourceMesh is modified if bEnableInsideQueries=true
 	TUniquePtr<TFastWindingTree<FDynamicMesh3>> FastWinding;
 
-
-	//
-	// Support for Runtime-Generated Collision
-	//
 public:
 	UPROPERTY(EditAnywhere, Category = RuntimeCollisionOptions)
 	EDynamicMeshActorCollisionMode CollisionMode = EDynamicMeshActorCollisionMode::NoCollision;
 
-
-	//
-	// ADynamicMeshActor API that subclasses must implement.
-	//
 protected:
 	/**
 	 * Called when the SourceMesh has been modified. Subclasses override this function to
@@ -379,17 +304,8 @@ protected:
 	 */
 	virtual void OnMeshEditedInternal();
 
-
-
-
-	//
-	// Standard UE4 Actor Callbacks. If you need to override these functions,
-	// make sure to call (eg) Super::Tick() or you will break the mesh updating functionality.
-	//
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-
 	virtual void PostLoad() override;
 	virtual void PostActorCreated() override;
 
@@ -402,15 +318,7 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	virtual void ResetMeshData();
-
-
-
-
-	//
-	// Blueprint API
-	//
-
+	virtual void ResetMeshData() {}
 
 public:
 	/** 
@@ -425,11 +333,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void CopyFromMesh(ADynamicMeshActor* OtherMesh, bool bRecomputeNormals);
 
-
-
-	//
-	// Mesh Spatial Queries API
-	//
 public:
 	/**
 	 * Find NearestMeshWorldPoint on SourceMesh to WorldPoint, as well as NearestTriangle ID and barycentric coordinates of NearestMeshWorldPoint in triangle
@@ -459,23 +362,18 @@ public:
 	UFUNCTION(BlueprintCallable)
 	bool IntersectRay(FVector RayOrigin, FVector RayDirection, FVector& WorldHitPoint, float& HitDistance, int& NearestTriangle, FVector& TriBaryCoords, float MaxDistance = 0);
 
-
-
-	//
-	// Mesh Modification API
-	//
 public:
 
 	UFUNCTION(BlueprintCallable)
 	void ResetMesh();
 
-	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh */
-	UFUNCTION(BlueprintCallable)
-	void BooleanWithMesh(ADynamicMeshActor* OtherMesh, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options);
-
 	/** Compute the specified a Boolean operation with OtherMesh (transformed to world space) and store in our SourceMesh, Async */
 	UFUNCTION(BlueprintCallable)
 	void BooleanWithMeshAsync(ADynamicMeshActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options);
+
+	/** Cut SourceMesh with OtherMesh */
+	UFUNCTION(BlueprintCallable)
+	void CutMesh(ADynamicMeshActor* OtherMesh);
 
 	/** Subtract OtherMesh from our SourceMesh */
 	UFUNCTION(BlueprintCallable)

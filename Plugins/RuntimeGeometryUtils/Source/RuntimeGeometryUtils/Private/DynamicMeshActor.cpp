@@ -8,6 +8,53 @@
 
 #include "DynamicMeshOBJReader.h"
 
+void FBooleanWithMeshAsyncTask::DoWork()
+{
+	SCOPE_CYCLE_COUNTER(STAT_BooleanWithMeshAsyncTask);
+	MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
+	MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
+
+	FDynamicMesh3 ResultMesh;
+
+	FMeshBoolean::EBooleanOp ApplyOp = FMeshBoolean::EBooleanOp::Union;
+	switch (BooleanOperation)
+	{
+	case EDynamicMeshActorBooleanOperation::Cut:
+		ApplyOp = FMeshBoolean::EBooleanOp::DifferenceNoPatch;
+		break;
+	case EDynamicMeshActorBooleanOperation::Subtraction:
+		ApplyOp = FMeshBoolean::EBooleanOp::Difference;
+		break;
+	case EDynamicMeshActorBooleanOperation::Intersection:
+		ApplyOp = FMeshBoolean::EBooleanOp::Intersect;
+		break;
+	default:
+		break;
+	}
+
+	FMeshBoolean Boolean(
+		&Mesh, FTransform3d::Identity(),
+		&OtherMesh, FTransform3d::Identity(),
+		&ResultMesh,
+		ApplyOp);
+	Boolean.bPutResultInInputSpace = true;
+	Boolean.bSimplifyAlongNewEdges = BooleanOptions.bSimplifyOutput;
+	Boolean.Compute();
+
+	if (NormalsMode == EDynamicMeshActorNormalsMode::PerVertexNormals)
+	{
+		ResultMesh.EnableAttributes();
+		FMeshNormals::InitializeOverlayToPerVertexNormals(ResultMesh.Attributes()->PrimaryNormals(), false);
+	}
+	else if (NormalsMode == EDynamicMeshActorNormalsMode::FaceNormals)
+	{
+		ResultMesh.EnableAttributes();
+		FMeshNormals::InitializeOverlayToPerTriangleNormals(ResultMesh.Attributes()->PrimaryNormals());
+	}
+
+	Mesh = MoveTemp(ResultMesh);
+}
+
 // Sets default values
 ADynamicMeshActor::ADynamicMeshActor()
 {
@@ -39,8 +86,6 @@ void ADynamicMeshActor::PostActorCreated()
 	OnMeshGenerationSettingsModified();
 }
 
-
-
 // Called when the game starts or when spawned
 void ADynamicMeshActor::BeginPlay()
 {
@@ -66,18 +111,11 @@ void ADynamicMeshActor::Tick(float DeltaTime)
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_ResetMeshData);
 		SourceMesh = BooleanWithMeshAsyncTask->GetTask().Mesh;
 		MeshAABBTree.SetMesh(&SourceMesh);
-		MeshAABBTree.Build();
 
 		OnMeshEditedInternal();
 		BooleanWithMeshAsyncTask->GetTask().CanBeReuse = true;
 	}
 }
-
-void ADynamicMeshActor::ResetMeshData()
-{
-
-}
-
 
 #if WITH_EDITOR
 void ADynamicMeshActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -105,7 +143,6 @@ void ADynamicMeshActor::EditMesh(TFunctionRef<void(FDynamicMesh3&)> EditFunc)
 	OnMeshEditedInternal();
 }
 
-
 void ADynamicMeshActor::GetMeshCopy(FDynamicMesh3& MeshOut)
 {
 	MeshOut = SourceMesh;
@@ -126,14 +163,12 @@ void ADynamicMeshActor::OnMeshEditedInternal()
 	OnMeshModified.Broadcast(this);
 }
 
-
 void ADynamicMeshActor::OnMeshGenerationSettingsModified()
 {
 	EditMesh([this](FDynamicMesh3& MeshToUpdate) {
 		RegenerateSourceMesh(MeshToUpdate);
 	});
 }
-
 
 void ADynamicMeshActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 {
@@ -194,12 +229,6 @@ void ADynamicMeshActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 	RecomputeNormals(MeshOut);
 }
 
-
-
-
-
-
-
 void ADynamicMeshActor::RecomputeNormals(FDynamicMesh3& MeshOut)
 {
 	if (this->NormalsMode == EDynamicMeshActorNormalsMode::PerVertexNormals)
@@ -214,13 +243,10 @@ void ADynamicMeshActor::RecomputeNormals(FDynamicMesh3& MeshOut)
 	}
 }
 
-
-
 int ADynamicMeshActor::GetTriangleCount()
 {
 	return SourceMesh.TriangleCount();
 }
-
 
 float ADynamicMeshActor::DistanceToPoint(FVector WorldPoint, FVector& NearestWorldPoint, int& NearestTriangle, FVector& TriBaryCoords)
 {
@@ -247,7 +273,6 @@ float ADynamicMeshActor::DistanceToPoint(FVector WorldPoint, FVector& NearestWor
 	return (float)FMathd::Sqrt(NearDistSqr);
 }
 
-
 FVector ADynamicMeshActor::NearestPoint(FVector WorldPoint)
 {
 	if (bEnableSpatialQueries)
@@ -269,7 +294,6 @@ bool ADynamicMeshActor::ContainsPoint(FVector WorldPoint, float WindingThreshold
 	}
 	return false;
 }
-
 
 bool ADynamicMeshActor::IntersectRay(FVector RayOrigin, FVector RayDirection, 
 	FVector& WorldHitPoint, float& HitDistance, int& NearestTriangle, FVector& TriBaryCoords,
@@ -302,8 +326,11 @@ bool ADynamicMeshActor::IntersectRay(FVector RayOrigin, FVector RayDirection,
 	return false;
 }
 
-DECLARE_CYCLE_STAT(TEXT("EditMesh"), STAT_EditMesh, STATGROUP_Game);
-
+void ADynamicMeshActor::CutMesh(ADynamicMeshActor* OtherMeshActor)
+{
+	FMeshBooleanOptions Options;
+	BooleanWithMeshAsync(OtherMeshActor, EDynamicMeshActorBooleanOperation::Cut, Options);
+}
 
 void ADynamicMeshActor::SubtractMesh(ADynamicMeshActor* OtherMeshActor)
 {
@@ -321,59 +348,9 @@ void ADynamicMeshActor::IntersectWithMesh(ADynamicMeshActor* OtherMeshActor)
 	BooleanWithMeshAsync(OtherMeshActor, EDynamicMeshActorBooleanOperation::Intersection, Options);
 }
 
-
 void ADynamicMeshActor::ResetMesh()
 {
 	ResetMeshData();
-}
-
-void ADynamicMeshActor::BooleanWithMesh(ADynamicMeshActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options)
-{
-	if (ensure(OtherMeshActor) == false) return;
-
-	FTransform3d ActorToWorld(GetActorTransform());
-	FTransform3d OtherToWorld(OtherMeshActor->GetActorTransform());
-
-	FDynamicMesh3 OtherMesh;
-	OtherMeshActor->GetMeshCopy(OtherMesh);
-	MeshTransforms::ApplyTransform(OtherMesh, OtherToWorld);
-	MeshTransforms::ApplyTransformInverse(OtherMesh, ActorToWorld);
-
-	EditMesh([&](FDynamicMesh3& MeshToUpdate) {
-		SCOPE_CYCLE_COUNTER(STAT_EditMesh);
-		FDynamicMesh3 ResultMesh;
-
-		FMeshBoolean::EBooleanOp ApplyOp = FMeshBoolean::EBooleanOp::Union;
-		switch (Operation)
-		{
-			default:
-				break;
-			case EDynamicMeshActorBooleanOperation::Subtraction:
-				ApplyOp = FMeshBoolean::EBooleanOp::Difference;
-				break;
-			case EDynamicMeshActorBooleanOperation::Intersection:
-				ApplyOp = FMeshBoolean::EBooleanOp::Intersect;
-				break;
-		}
-
-		FMeshBoolean Boolean(
-			&MeshToUpdate, FTransform3d::Identity(),
-			&OtherMesh, FTransform3d::Identity(),
-			&ResultMesh,
-			ApplyOp);
-		Boolean.bPutResultInInputSpace = true;
-		Boolean.bSimplifyAlongNewEdges = Options.bSimplifyOutput;
-		bool bOK = Boolean.Compute();
-
-		if (!bOK)
-		{
-			// fill holes
-		}
-
-		RecomputeNormals(ResultMesh);
-
-		MeshToUpdate = MoveTemp(ResultMesh);
-	});
 }
 
 void ADynamicMeshActor::BooleanWithMeshAsync(ADynamicMeshActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options)
@@ -399,8 +376,6 @@ void ADynamicMeshActor::BooleanWithMeshAsync(ADynamicMeshActor* OtherMeshActor, 
 	BooleanWithMeshAsyncTask->StartBackgroundTask();
 }
 
-
-
 bool ADynamicMeshActor::ImportMesh(FString Path, bool bFlipOrientation, bool bRecomputeNormals)
 {
 	FDynamicMesh3 ImportedMesh;
@@ -423,7 +398,6 @@ bool ADynamicMeshActor::ImportMesh(FString Path, bool bFlipOrientation, bool bRe
 	return true;
 }
 
-
 void ADynamicMeshActor::CopyFromMesh(ADynamicMeshActor* OtherMesh, bool bRecomputeNormals)
 {
 	if (! ensure(OtherMesh) ) return;
@@ -444,9 +418,6 @@ void ADynamicMeshActor::CopyFromMesh(ADynamicMeshActor* OtherMesh, bool bRecompu
 		MeshToUpdate = MoveTemp(TmpMesh);
 	});
 }
-
-
-
 
 void ADynamicMeshActor::SolidifyMesh(int VoxelResolution, float WindingThreshold)
 {

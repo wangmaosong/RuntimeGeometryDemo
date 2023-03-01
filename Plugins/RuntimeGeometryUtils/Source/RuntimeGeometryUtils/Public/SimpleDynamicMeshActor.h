@@ -32,7 +32,7 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	void ResetMeshData() override;
+	virtual void ResetMeshData() override;
 
 protected:
 	/**
