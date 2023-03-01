@@ -6,7 +6,7 @@
 #include "MeshSimplification.h"
 #include "Implicit/Solidify.h"
 
-#include "DynamicMeshOBJReader.h"
+#include "MeshDescriptionToDynamicMesh.h"
 
 void FBooleanWithMeshAsyncTask::DoWork()
 {
@@ -77,6 +77,7 @@ ADynamicMeshActor::~ADynamicMeshActor()
 void ADynamicMeshActor::PostLoad()
 {
 	Super::PostLoad();
+
 	OnMeshGenerationSettingsModified();
 }
 
@@ -121,6 +122,7 @@ void ADynamicMeshActor::Tick(float DeltaTime)
 void ADynamicMeshActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
+
 	OnMeshGenerationSettingsModified();
 }
 #endif
@@ -156,6 +158,17 @@ const FDynamicMesh3& ADynamicMeshActor::GetMeshRef() const
 void ADynamicMeshActor::SetMesh(FDynamicMesh3& Mesh)
 {
 	SourceMesh = Mesh;
+}
+
+void ADynamicMeshActor::CreateDynamicMeshFromStaticMesh(const UStaticMesh* StaticMesh)
+{
+	if (StaticMesh)
+	{
+		SourceMesh.Clear();
+
+		FMeshDescriptionToDynamicMesh Converter;
+		Converter.Convert(StaticMesh->GetMeshDescription(0), SourceMesh);
+	}
 }
 
 void ADynamicMeshActor::OnMeshEditedInternal()
@@ -196,34 +209,10 @@ void ADynamicMeshActor::RegenerateSourceMesh(FDynamicMesh3& MeshOut)
 			MeshOut.Copy(&BoxGen.Generate());
 		}
 
-	} 
-	else if (SourceType == EDynamicMeshActorSourceType::ImportedMesh)
+	}
+	else if (SourceType == EDynamicMeshActorSourceType::StaticMeshAsset)
 	{
-		FString UsePath = ImportPath;
-		if (FPaths::FileExists(UsePath) == false && FPaths::IsRelative(UsePath))
-		{
-			UsePath = FPaths::ProjectContentDir() + ImportPath;
-		}
-
-		MeshOut = FDynamicMesh3();
-		if ( ! RTGUtils::ReadOBJMesh(UsePath, MeshOut, true, true, true, bReverseOrientation))
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Error reading mesh file %s"), *UsePath);
-			FSphereGenerator SphereGen;
-			SphereGen.NumPhi = SphereGen.NumTheta = 8;
-			SphereGen.Radius = this->MinimumRadius;
-			MeshOut.Copy(&SphereGen.Generate());
-		}
-
-		if (bCenterPivot)
-		{
-			MeshTransforms::Translate(MeshOut, -MeshOut.GetBounds().Center());
-		}
-
-		if (ImportScale != 1.0)
-		{
-			MeshTransforms::Scale(MeshOut, ImportScale*FVector3d::One(), FVector3d::Zero());
-		}
+		CreateDynamicMeshFromStaticMesh(StaticMeshAssets);
 	}
 
 	RecomputeNormals(MeshOut);
@@ -350,7 +339,7 @@ void ADynamicMeshActor::IntersectWithMesh(ADynamicMeshActor* OtherMeshActor)
 
 void ADynamicMeshActor::ResetMesh()
 {
-	ResetMeshData();
+	RegenerateSourceMesh(SourceMesh);
 }
 
 void ADynamicMeshActor::BooleanWithMeshAsync(ADynamicMeshActor* OtherMeshActor, EDynamicMeshActorBooleanOperation Operation, FMeshBooleanOptions Options)
@@ -374,28 +363,6 @@ void ADynamicMeshActor::BooleanWithMeshAsync(ADynamicMeshActor* OtherMeshActor, 
 	
 	BooleanWithMeshAsyncTask->GetTask().CanBeReuse = false;
 	BooleanWithMeshAsyncTask->StartBackgroundTask();
-}
-
-bool ADynamicMeshActor::ImportMesh(FString Path, bool bFlipOrientation, bool bRecomputeNormals)
-{
-	FDynamicMesh3 ImportedMesh;
-	if (!RTGUtils::ReadOBJMesh(Path, ImportedMesh, true, true, true, bFlipOrientation))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Error reading mesh file %s"), *Path);
-		return false;
-	}
-
-	if (bRecomputeNormals)
-	{
-		RecomputeNormals(ImportedMesh);
-	}
-
-	EditMesh([&](FDynamicMesh3& MeshToUpdate) 
-	{
-		MeshToUpdate = MoveTemp(ImportedMesh);
-	});
-
-	return true;
 }
 
 void ADynamicMeshActor::CopyFromMesh(ADynamicMeshActor* OtherMesh, bool bRecomputeNormals)

@@ -1,6 +1,7 @@
 #include "SimpleDynamicMeshActor.h"
 #include "DynamicMesh3.h"
 
+DECLARE_CYCLE_STAT(TEXT("UpdateSDMCMesh"), STAT_UpdateDynamicMesh, STATGROUP_Game);
 
 // Sets default values
 ASimpleDynamicMeshActor::ASimpleDynamicMeshActor()
@@ -17,21 +18,11 @@ void ASimpleDynamicMeshActor::BeginPlay()
 	Super::BeginPlay();
 }
 
-
 // Called every frame
 void ASimpleDynamicMeshActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 }
-
-void ASimpleDynamicMeshActor::ResetMeshData()
-{
-	SetMesh(OriginMesh);
-	UpdateDynamicMesh();
-	Super::OnMeshEditedInternal();
-}
-
-
 
 void ASimpleDynamicMeshActor::OnMeshEditedInternal()
 {
@@ -39,11 +30,9 @@ void ASimpleDynamicMeshActor::OnMeshEditedInternal()
 	Super::OnMeshEditedInternal();
 }
 
-DECLARE_CYCLE_STAT(TEXT("UpdateSDMCMesh"), STAT_UpdateSDMCMesh, STATGROUP_Game);
-
 void ASimpleDynamicMeshActor::UpdateDynamicMesh()
 {
-	SCOPE_CYCLE_COUNTER(STAT_UpdateSDMCMesh);
+	SCOPE_CYCLE_COUNTER(STAT_UpdateDynamicMesh);
 
 	if (MeshComponent)
 	{

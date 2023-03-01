@@ -23,7 +23,6 @@ enum class EDynamicMeshActorNormalsMode : uint8
 	FaceNormals = 2
 };
 
-
 /**
  * Source of mesh used to initialize ADynamicMeshActor
  */
@@ -31,9 +30,8 @@ UENUM()
 enum class EDynamicMeshActorSourceType : uint8
 {
 	Primitive,
-	ImportedMesh
+	StaticMeshAsset
 };
-
 
 /**
  * Geometric primitive types supported of by ADynamicMeshActor
@@ -44,7 +42,6 @@ enum class EDynamicMeshActorPrimitiveType : uint8
 	Sphere,
 	Box
 };
-
 
 /**
  * Boolean operation types supported of by ADynamicMeshActor
@@ -57,7 +54,6 @@ enum class EDynamicMeshActorBooleanOperation : uint8
 	Subtraction,		/** Subtraction mode with generate patch triangles. */
 	Intersection		/** Intersection mode will keep source geometry triangles in other geometry. */
 };
-
 
 UENUM(BlueprintType)
 enum class EDynamicMeshActorCollisionMode : uint8
@@ -133,7 +129,6 @@ public:
 	void DoWork();
 };
 
-
 /**
  * ADynamicMeshActor is a base class for Actors that support being
  * rebuilt in-game after mesh editing operations. The base Actor itself
@@ -177,8 +172,12 @@ public:
 
 public:
 	/** Type of mesh used to initialize this Actor - either a generated mesh Primitive or an Imported OBJ file */
-	UPROPERTY(EditAnywhere, Category = MeshOptions)
+	UPROPERTY(EditAnywhere, Category = MeshOptions, meta = (DisplayPriority = "1"))
 	EDynamicMeshActorSourceType SourceType = EDynamicMeshActorSourceType::Primitive;
+
+	/** Source static mesh to convert dynamic mesh component data. */
+	UPROPERTY(EditAnywhere, Category = MeshOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::StaticMeshAsset", EditConditionHides))
+	UStaticMesh* StaticMeshAssets = nullptr;
 
 	/** Type of normals computed for the Mesh */
 	UPROPERTY(EditAnywhere, Category = MeshOptions)
@@ -191,22 +190,6 @@ public:
 	/** If true, mesh will be regenerated or re-imported on tick. Can be useful for prototyping procedural animation, but not the most efficient way to do it */
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
 	bool bRegenerateOnTick = false;
-
-	/** Path to OBJ file read to initialize mesh in SourceType=Imported mode */
-	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
-	FString ImportPath;
-
-	/** Whether the imported mesh should have it's triangles reversed (commonly required for meshes authored in DCC tools) */
-	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
-	bool bReverseOrientation = true;
-
-	/** If true the imported mesh will be recentered around the origin */
-	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
-	bool bCenterPivot = true;
-
-	/** Uniform scaling applied to the imported mesh (baked into the mesh vertices, not the actor Transform) */
-	UPROPERTY(EditAnywhere, Category = ImportOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::ImportedMesh", EditConditionHides))
-	float ImportScale = 1.0;
 
 	/** Type of generated mesh primitive */
 	UPROPERTY(EditAnywhere, Category = PrimitiveOptions, meta = (EditCondition = "SourceType == EDynamicMeshActorSourceType::Primitive", EditConditionHides))
@@ -299,6 +282,11 @@ public:
 
 protected:
 	/**
+	 * Create dynamic mesh from static mesh.
+	 */
+	void CreateDynamicMeshFromStaticMesh(const UStaticMesh* StaticMesh);
+
+	/**
 	 * Called when the SourceMesh has been modified. Subclasses override this function to
 	 * update their respective Component with the new SourceMesh.
 	 */
@@ -318,17 +306,7 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	virtual void ResetMeshData() {}
-
 public:
-	/** 
-	 * Update SourceMesh by reading external mesh file at Path. Optionally flip orientation and recompute normals. 
-	 * Note: Path may be relative to Content folder, otherwise it must be an absolute path.
-	 * @return false if mesh read failed
-	 */
-	UFUNCTION(BlueprintCallable)
-	bool ImportMesh(FString Path, bool bFlipOrientation, bool bRecomputeNormals);
-
 	/** Copy the SourceMesh of OtherMesh into our SourceMesh, and optionally recompute normals */
 	UFUNCTION(BlueprintCallable)
 	void CopyFromMesh(ADynamicMeshActor* OtherMesh, bool bRecomputeNormals);
