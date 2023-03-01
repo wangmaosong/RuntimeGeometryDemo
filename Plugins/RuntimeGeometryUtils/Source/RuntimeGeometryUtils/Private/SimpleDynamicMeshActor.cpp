@@ -27,8 +27,7 @@ void ASimpleDynamicMeshActor::Tick(float DeltaTime)
 void ASimpleDynamicMeshActor::ResetMeshData()
 {
 	SetMesh(OriginMesh);
-
-	UpdateSDMCMesh();
+	UpdateDynamicMesh();
 	Super::OnMeshEditedInternal();
 }
 
@@ -36,13 +35,13 @@ void ASimpleDynamicMeshActor::ResetMeshData()
 
 void ASimpleDynamicMeshActor::OnMeshEditedInternal()
 {
-	UpdateSDMCMesh();
+	UpdateDynamicMesh();
 	Super::OnMeshEditedInternal();
 }
 
 DECLARE_CYCLE_STAT(TEXT("UpdateSDMCMesh"), STAT_UpdateSDMCMesh, STATGROUP_Game);
 
-void ASimpleDynamicMeshActor::UpdateSDMCMesh()
+void ASimpleDynamicMeshActor::UpdateDynamicMesh()
 {
 	SCOPE_CYCLE_COUNTER(STAT_UpdateSDMCMesh);
 

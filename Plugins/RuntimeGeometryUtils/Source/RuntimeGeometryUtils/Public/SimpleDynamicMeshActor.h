@@ -41,5 +41,5 @@ protected:
 	virtual void OnMeshEditedInternal() override;
 
 protected:
-	virtual void UpdateSDMCMesh();
+	virtual void UpdateDynamicMesh();
 };

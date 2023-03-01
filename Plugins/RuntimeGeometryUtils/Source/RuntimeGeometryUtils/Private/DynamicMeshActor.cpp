@@ -63,12 +63,12 @@ void ADynamicMeshActor::Tick(float DeltaTime)
 
 	if (BooleanWithMeshAsyncTask && BooleanWithMeshAsyncTask->IsDone())
 	{
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_ResetMeshData);
 		SourceMesh = BooleanWithMeshAsyncTask->GetTask().Mesh;
 		MeshAABBTree.SetMesh(&SourceMesh);
 		MeshAABBTree.Build();
 
 		OnMeshEditedInternal();
-
 		BooleanWithMeshAsyncTask->GetTask().CanBeReuse = true;
 	}
 }
